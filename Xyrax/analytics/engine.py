@@ -1,67 +1,70 @@
 """
 Core analytics engine for Instra.
-Handles impression prediction, viral scoring, and AI strategy generation.
+Handles impression prediction (trained Ridge model), viral scoring, and AI strategy.
 """
+import os
 import math
 import random
+import joblib
 from datetime import datetime
 
+# ── Load trained model ───────────────────────────────────────────────────────
+# Ridge pipeline (StandardScaler + Ridge) trained on 119 posts.
+# Best of 5 models compared (Linear, Ridge, Lasso, GradientBoosting, RandomForest):
+# test R2 0.91, CV R2 0.72 on leak-free engagement features.
+_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'ridge_pipeline.pkl')
+_FEATURES = ['Likes', 'Saves', 'Comments', 'Shares', 'Profile Visits', 'Follows',
+             'saves_per_like', 'shares_per_like', 'follow_rate', 'total_engagement',
+             'hashtag_count', 'caption_len']
+try:
+    _MODEL = joblib.load(_MODEL_PATH)
+except Exception:
+    _MODEL = None
 
-# ── Impression prediction ────────────────────────────────────────────────────
 
-def predict_impressions(inputs: dict, history: list[dict]) -> int:
-    """
-    Weighted formula combining engagement signals.
-    When history is available, calibrates to the session's historical average.
-    """
+def _build_feature_row(inputs: dict) -> list:
     likes = inputs.get('likes', 0)
     saves = inputs.get('saves', 0)
     comments = inputs.get('comments', 0)
     shares = inputs.get('shares', 0)
     follows = inputs.get('follows', 0)
     profile_visits = inputs.get('profile_visits', 0)
-    caption_length = inputs.get('caption_length', 0)
     hashtags = inputs.get('hashtags', 0)
+    caption_length = inputs.get('caption_length', 0)
+    total_engagement = likes + saves + comments + shares
+    return [
+        likes, saves, comments, shares, profile_visits, follows,
+        saves / (likes + 1), shares / (likes + 1), follows / (profile_visits + 1),
+        total_engagement, hashtags, caption_length,
+    ]
+
+
+def predict_impressions(inputs: dict, history: list[dict]) -> int:
+    """
+    Predict a post's total reach (impressions) from its engagement signals
+    using the trained Ridge model. Falls back to a weighted heuristic only if
+    the model artifact is unavailable.
+    """
+    if _MODEL is not None:
+        row = _build_feature_row(inputs)
+        pred = int(self_clip(_MODEL.predict([row])[0]))
+        return pred
+
+    # ── Fallback heuristic (used only if model file missing) ──
+    likes = inputs.get('likes', 0)
+    saves = inputs.get('saves', 0)
+    comments = inputs.get('comments', 0)
+    shares = inputs.get('shares', 0)
+    follows = inputs.get('follows', 0)
+    profile_visits = inputs.get('profile_visits', 0)
     reposts = inputs.get('reposts', 0)
+    base = (likes*1.0 + saves*4.5 + comments*3.0 + shares*6.0 +
+            follows*5.0 + profile_visits*0.8 + reposts*5.5)
+    return max(int(base * 12.5 + 400), 100)
 
-    # Base engagement score
-    base = (
-        likes * 1.0 +
-        saves * 4.5 +
-        comments * 3.0 +
-        shares * 6.0 +
-        follows * 5.0 +
-        profile_visits * 0.8 +
-        reposts * 5.5
-    )
 
-    # Caption sweet-spot bonus (100–220 chars)
-    if 100 <= caption_length <= 220:
-        base *= 1.08
-    elif caption_length > 400:
-        base *= 0.96
-
-    # Hashtag sweet-spot bonus (5–25 tags)
-    if 5 <= hashtags <= 25:
-        base *= 1.05
-    elif hashtags > 30:
-        base *= 0.97
-
-    # Convert to estimated impressions
-    impressions = int(base * 12.5 + 400)
-
-    # Calibrate against historical average if we have data
-    if history:
-        hist_imps = [p.get('predicted_impressions', 0) for p in history if p.get('predicted_impressions', 0) > 0]
-        if hist_imps:
-            hist_avg = sum(hist_imps) / len(hist_imps)
-            # Blend: 60% formula, 40% scaled from historical
-            saves_ratio = saves / max(likes, 1)
-            scale = 1 + (saves_ratio - 0.5) * 0.4
-            calibrated = hist_avg * scale
-            impressions = int(0.6 * impressions + 0.4 * calibrated)
-
-    return max(impressions, 100)
+def self_clip(v: float) -> int:
+    return max(int(round(v)), 100)
 
 
 def compute_viral_score(inputs: dict) -> float:
