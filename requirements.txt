@@ -1,3 +1,6 @@
 Django>=4.2,<5.0
 httpx>=0.27.0
 gunicorn
+scikit-learn==1.5.2
+numpy>=1.26
+joblib>=1.3
