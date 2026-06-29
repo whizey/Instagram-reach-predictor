@@ -1,176 +1,157 @@
 # Social Media Engagement Forecasting
 
-A machine learning and analytics platform that predicts Instagram post reach and analyzes engagement behavior using regression models and a Django-based analytics backend.
+A machine learning and analytics platform that estimates an Instagram post's
+total reach (impressions) from its engagement signals, and surfaces which
+behaviors drive visibility. The trained model is served in production through a
+Django backend.
 
-The system estimates the number of **impressions a post may receive** based on engagement signals such as likes, saves, comments, shares, profile visits, and follows. It also computes additional engagement metrics such as viral score, engagement rate, and follower conversion rate to provide deeper insights into content performance.
+> **What this does:** given a post's engagement (likes, saves, comments, shares,
+> profile visits, follows), it estimates the post's total impressions and breaks
+> down the engagement that matters most. It is a *reach-estimation and analysis*
+> tool, not a pre-publication forecaster — the inputs are signals a post
+> accumulates after going live.
 
-The project combines a **machine learning prediction pipeline with a production-style analytics platform**, allowing engagement data to be analyzed, stored, and interpreted through a Django-based backend.
+**Best model:** Ridge Regression — test R² **0.91**, 5-fold CV R² **0.72–0.81**
+(fold-dependent on a 119-row set), MAE ~1,261, and **71% lower error than a
+mean baseline**.
 
 ---
 
 ## Project Overview
 
-Content creators often publish posts without knowing in advance which content will perform well. Most rely on intuition or vanity metrics such as likes, but these signals alone do not explain why some posts reach significantly larger audiences.
+Creators often judge a post by likes alone, but likes don't explain why some
+posts reach far more people than others. This project asks a focused question:
 
-This project explores whether Instagram post reach can be predicted using engagement signals and identifies which engagement behaviors contribute most to content visibility.
+> Can a post's total reach be estimated from its engagement signals, and which
+> signals carry the most weight?
 
 The system includes:
 
-- A **machine learning pipeline** for predicting post impressions  
-- An **analytics engine** for engagement analysis and viral scoring  
-- A **Django backend architecture** that exposes APIs and stores historical post data  
-
-The best-performing model, **Ridge Regression**, achieved an **R² score of 0.9485** and **cross-validation R² of 0.8210**, indicating strong predictive performance.
-
----
-
-## Problem Statement
-
-Social media platforms distribute content based on complex engagement signals. However, creators often focus primarily on likes as a measure of success.
-
-This raises an important question:
-
-> Can post reach be predicted using engagement metrics, and which signals actually influence visibility?
-
-Understanding these signals allows creators and marketing teams to design content that encourages meaningful engagement rather than focusing only on surface-level reactions.
+- A **machine learning pipeline** comparing five regression models for impression estimation
+- An **analytics engine** for viral scoring, engagement rate, and follow conversion
+- A **Django backend** that serves the trained model via API and stores per-session history
 
 ---
 
 ## Dataset
 
-The model was trained using **Instagram post-level engagement data**.
+- Source: public Instagram post-level engagement dataset (119 posts, single account)
+- One row per post, with raw engagement counts plus caption and hashtag text
+- **Target:** `Impressions` (total reach per post)
 
-Each row in the dataset represents a single Instagram post and includes multiple engagement metrics.
-
-### Features
-
-- Likes  
-- Saves  
-- Comments  
-- Shares  
-- Profile Visits  
-- Follows  
-- Impressions from Home Feed  
-- Impressions from Hashtags  
-- Impressions from Explore Page  
-
-### Target Variable
-
-**Impressions**
-
-Impressions represent the total number of times a post was displayed to users and serve as the primary indicator of post reach.
-
-### Secondary Target
-
-**Viral Score**
-
-The viral score represents overall engagement quality derived from engagement signals.
+Because the dataset is small and single-account, results are reported with
+cross-validation, and generalization to other accounts would require retraining.
 
 ---
 
-## Assumptions
+## A note on data leakage (important)
 
-Several assumptions were considered during modeling:
+The raw dataset includes columns that break impressions down by source
+(`From Home`, `From Hashtags`, `From Explore`). These were **excluded** — they
+are components of the target and would leak it.
 
-**Stationarity**
-
-Past engagement behavior for a given account is assumed to be relatively stable, allowing historical engagement patterns to be used for prediction.
-
-**Saves vs Likes**
-
-Saves and follower conversions are assumed to represent deeper user intent compared to passive reactions such as likes.
-
-**Derived Viral Score**
-
-The viral score is derived from engagement metrics rather than being an independent variable.
+An earlier version also engineered an `engagement_rate = total_engagement /
+Impressions` feature. Because it divides by the target, it inflated R² to ~0.95.
+**It was removed and the model retrained on leak-free features**, which is why the
+honest R² reported here (0.91 test / 0.72 CV) is lower than an early draft — and
+far more trustworthy.
 
 ---
 
-## Approach
+## Features used (leak-free)
 
-### Feature Engineering
+Raw signals plus a few derived ratios that capture behavior, none of which touch
+the target:
 
-Raw engagement counts do not fully represent user interaction patterns. Several derived metrics were created to better capture engagement behavior.
-
-| Feature | Formula | Purpose |
-|--------|--------|--------|
-| Engagement Rate | (Likes + Comments + Saves + Shares) / Impressions | Measures audience responsiveness |
-| Save-to-Like Ratio | Saves / Likes | Indicates perceived content value |
-| Follower Conversion Rate | Follows / Profile Visits | Measures audience growth potential |
+| Feature | Source |
+|---|---|
+| Likes, Saves, Comments, Shares, Profile Visits, Follows | raw engagement |
+| Save-to-Like ratio | Saves / (Likes + 1) |
+| Share-to-Like ratio | Shares / (Likes + 1) |
+| Follow rate | Follows / (Profile Visits + 1) |
+| Total engagement | Likes + Saves + Comments + Shares |
+| Hashtag count | parsed from caption |
+| Caption length | character count |
 
 ---
 
-### Model Training
+## Model Training
 
 Five regression models were trained and compared:
 
-- Linear Regression  
-- Ridge Regression  
-- Lasso Regression  
-- Gradient Boosting Regression  
-- Random Forest Regression  
+- Linear Regression
+- Ridge Regression
+- Lasso Regression
+- Gradient Boosting
+- Random Forest
 
-Training configuration:
-
-- StandardScaler for feature normalization  
-- 80/20 train–test split  
-- 5-fold cross-validation  
+Configuration: StandardScaler normalization, 80/20 train–test split, 5-fold
+cross-validation for generalization.
 
 ---
 
-### Evaluation Metrics
+## Results — Impressions
 
-Models were evaluated using the following metrics:
+| Model | Test R² | CV R² | MAE | RMSE |
+|---|---|---|---|---|
+| **Ridge Regression** | **0.914** | **0.720** | 1,261 | 1,828 |
+| Lasso Regression | 0.904 | 0.688 | 1,344 | 1,928 |
+| Linear Regression | 0.903 | 0.686 | 1,352 | 1,945 |
+| Gradient Boosting | 0.922 | 0.745 | 896 | 1,738 |
+| Random Forest | 0.872 | 0.684 | 1,122 | 2,229 |
 
-- **R² Score** – Variance explained by the model  
-- **Cross-Validation R²** – Model generalization performance  
-- **MAE (Mean Absolute Error)** – Average prediction error  
-- **RMSE (Root Mean Squared Error)** – Penalizes large prediction errors  
-
----
-
-## Results
-
-### Impressions Prediction
-
-| Model | R² | CV R² | MAE | RMSE |
-|------|------|------|------|------|
-| **Ridge Regression** | **0.9485** | **0.8210** | 936.78 | 1414.19 |
-| Lasso Regression | 0.9374 | 0.8057 | 1015.60 | 1559.64 |
-| Linear Regression | 0.9360 | 0.8053 | 1026.58 | 1577.19 |
-| Gradient Boosting | 0.9061 | 0.6435 | 743.21 | 1909.36 |
-| Random Forest | 0.8670 | 0.6646 | 1062.64 | 2272.85 |
-
-**Best Model:** Ridge Regression
-
-Ridge Regression achieved the best balance between prediction accuracy and generalization.
+**Why Ridge was chosen.** Gradient Boosting edged it on CV R² (0.745 vs 0.720),
+but on a 119-row dataset that margin is within noise, and Ridge is more stable
+and interpretable. The interpretability/stability trade-off favored Ridge for a
+model that has to be explained and trusted, so Ridge was shipped.
 
 ---
 
-### Viral Score Prediction
+## Ridge — detailed metrics
 
-| Model | R² | CV R² | MAE |
-|------|------|------|------|
-| **Linear Regression** | **1.0000** | **1.0000** | ~0 |
-| Ridge Regression | 0.9999 | 0.9998 | 0.06 |
-| Lasso Regression | 0.9805 | 0.9478 | 1.26 |
-| Gradient Boosting | 0.8297 | 0.8819 | 2.90 |
-| Random Forest | 0.7685 | 0.8707 | 3.48 |
+**Target context** (so the errors mean something): impressions average **5,704**,
+median **4,289**, ranging **1,941 – 36,919** (std 4,844).
 
-**Observation**
+| Metric | Value | Reading |
+|---|---|---|
+| Test R² | 0.914 | explains ~91% of variance on held-out posts |
+| Train R² | 0.906 | **gap ≈ 0** → no meaningful overfitting |
+| Test MAE | 1,261 | average miss in absolute impressions |
+| Test RMSE | 1,828 | error with large misses penalized |
+| Test MAPE | 20.7% | average miss as a % of actual reach |
+| vs mean baseline | **−71% RMSE** | beats predict-the-average by 71% |
 
-The perfect R² score for Linear Regression indicates that viral score is mathematically derived from engagement metrics rather than being an independent prediction target.
+**Cross-validation (5-fold):** per-fold R² = [0.91, 0.75, 0.81, 0.79, 0.81],
+mean **0.81**, std **0.05**. (A contiguous, non-shuffled split lands nearer 0.72;
+the spread reflects the small dataset, so the honest range is ~0.72–0.81.)
+
+**Feature influence** (standardized Ridge coefficients): **Saves** and **Profile
+Visits** are the dominant positive drivers of predicted reach, followed by total
+engagement — consistent with the headline insight that saves signal reach more
+than likes. Note: several engagement features are correlated, so individual
+coefficient *signs* on the weaker features are not stable enough to
+over-interpret; the reliable takeaway is the dominance of saves and profile
+visits.
 
 ---
 
 ## Key Insight
 
-The analysis reveals that **saves and follower growth are stronger predictors of reach than likes or comments**.
+Saves and follower growth are stronger predictors of reach than likes or
+comments — the algorithm appears to reward signals of genuine intent:
 
-This suggests that social media algorithms prioritize engagement signals that indicate deeper user intent:
+- Saves → content worth revisiting
+- Shares → content worth spreading
+- Follows → content worth subscribing to
 
-- Saves → content worth revisiting  
-- Shares → content worth spreading  
-- Follows → content that attracts new audience  
+**Takeaway for creators:** optimize for saves and follow conversion, not just likes.
 
 ---
+
+## Serving
+
+The trained Ridge pipeline (scaler + model) is serialized to
+`analytics/models/ridge_pipeline.pkl` and loaded by the Django app at startup.
+Each `/api/analyze/` request builds the feature row and returns the model's
+prediction. A rule-based fallback runs only if the model artifact is missing, so
+the API stays available either way.
