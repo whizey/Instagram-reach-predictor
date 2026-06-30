@@ -42,7 +42,7 @@ It has three parts working together:
 
 ---
 
-## How it works (plain English)
+## How it works 
 
 Think of it as a four-stage assembly line. A post's numbers go in one end, an
 estimate comes out the other.
@@ -159,7 +159,7 @@ This script:
 1. Loads `Instagram_Data.csv`
 2. Rebuilds the leak-free features
 3. Trains and compares all 5 models
-4. Saves the best one (Ridge) to `analytics/models/ridge_pipeline.pkl`
+4. Saves the best one (Ridge) to `analytics/,M,ridge_pipeline.pkl`
 
 The saved `.pkl` file *is* the trained model — it contains the learned weights
 and the scaler together, so the web app just loads it and runs predictions. No
@@ -191,7 +191,7 @@ curl -X POST http://127.0.0.1:8000/api/analyze/ \
   }'
 ```
 Returns predicted impressions, viral score, engagement rate, and growth tips as
-JSON.
+JSON.,,K
 
 ---
 
