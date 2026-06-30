@@ -12,7 +12,7 @@ from datetime import datetime
 # Ridge pipeline (StandardScaler + Ridge) trained on 119 posts.
 # Best of 5 models compared (Linear, Ridge, Lasso, GradientBoosting, RandomForest):
 # test R2 0.91, CV R2 0.72 on leak-free engagement features.
-_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models', 'ridge_pipeline.pkl')
+_MODEL_PATH = os.path.join(os.path.dirname(__file__), 'ridge_pipeline.pkl')
 _FEATURES = ['Likes', 'Saves', 'Comments', 'Shares', 'Profile Visits', 'Follows',
              'saves_per_like', 'shares_per_like', 'follow_rate', 'total_engagement',
              'hashtag_count', 'caption_len']
